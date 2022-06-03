@@ -15,7 +15,7 @@ func main() {
 	// prints out key presses in order
 	for _, key := range k.log {
 		if key.down {
-			fmt.Println(key.name)
+			fmt.Print(" ", key.name, " ")
 		}
 	}
 

