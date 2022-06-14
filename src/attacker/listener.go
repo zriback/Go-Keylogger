@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"net"
-	"time"
 )
 
 func main() {
@@ -11,17 +10,11 @@ func main() {
 	check(err)
 	defer conn.Close()
 
-	var dataRead []byte
 	for {
-		// clear the console
-		fmt.Println("\x1bc") // clears the terminal from the bottom
-
-		buffer := make([]byte, 1024)
-		n, addr, _ := conn.ReadFromUDP(buffer)
-		dataRead = append(dataRead, buffer[:n]...) // extend
-
-		fmt.Println(string(dataRead), "\tFrom", addr)
-		time.Sleep(100 * time.Millisecond)
+		buffer := make([]byte, 512)
+		n, addr, _ := conn.ReadFromUDP(buffer) // this pauses execution?
+		_ = addr
+		fmt.Print(string(buffer[:n]))
 	}
 
 }
