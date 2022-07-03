@@ -22,6 +22,7 @@ func main() {
 // stop running if there is an error
 func check(e error) {
 	if e != nil {
+		fmt.Println("CONNECTION COULD NOT BE ESTABLISHED")
 		panic(e)
 	}
 }
