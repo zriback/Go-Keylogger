@@ -22,7 +22,7 @@ To run indefinitely and send to the host at 192.168.1.1, it should be:
 
 # Listening
 
-When in sending logged keystrokes to a remote host on the network, the attacker needs to listen on that machine on port 4444 for the data being sent.
+When sending logged keystrokes to a remote host on the network, the attacker needs to listen on that machine on port 4444 for the data being sent.
 
 * On Linux, this can be done very easily with netcat.
 
